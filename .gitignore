@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+*.env
+!.env.example
+backend/.env
+frontend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Logs and runtime artifacts
+logs/
+tmp/
+*.log
+
+# Node
+node_modules/
+dist/
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/*.code-workspace
