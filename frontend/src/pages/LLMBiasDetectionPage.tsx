@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle, XCircle, AlertTriangle, Loader2, Copy, Check } from 'lucide-react'
 
 import { api } from '../lib/api'
-import type { LLMBiasAnalysisResponse, BiasDetectionResult } from '../types'
+import type { LLMBiasAnalysisResponse, LLMBiasAnalysisHistory } from '../types'
 
 export function LLMBiasDetectionPage() {
   const [textInput, setTextInput] = useState('')
-  const [copied, setCopied] = useState(false)
 
   // Fetch history
-  const { data: history, refetch: refetchHistory } = useQuery({
+  const { data: history, refetch: refetchHistory } = useQuery<LLMBiasAnalysisHistory>({
     queryKey: ['llm-bias-history'],
     queryFn: async () => (await api.get('/llm-bias/history')).data,
     enabled: true,
@@ -37,18 +35,17 @@ export function LLMBiasDetectionPage() {
   }
 
   const severityConfig = {
-    low: { bg: 'bg-green-50', text: 'text-green-700', icon: CheckCircle, label: 'Low Risk' },
-    medium: { bg: 'bg-yellow-50', text: 'text-yellow-700', icon: AlertTriangle, label: 'Medium Risk' },
-    high: { bg: 'bg-orange-50', text: 'text-orange-700', icon: AlertCircle, label: 'High Risk' },
-    critical: { bg: 'bg-red-50', text: 'text-red-700', icon: XCircle, label: 'Critical Risk' },
+    low: { bg: 'bg-green-50', text: 'text-green-700', label: 'Low Risk' },
+    medium: { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Medium Risk' },
+    high: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'High Risk' },
+    critical: { bg: 'bg-red-50', text: 'text-red-700', label: 'Critical Risk' },
   }
 
   const getSeverityBadge = (severity: string) => {
     const config = severityConfig[severity as keyof typeof severityConfig] || severityConfig.low
-    const Icon = config.icon
     return (
       <div className={`flex items-center gap-2 rounded-full px-3 py-1 ${config.bg} ${config.text}`}>
-        <Icon size={16} />
+        <span className="h-2 w-2 rounded-full bg-current" />
         <span className="text-sm font-semibold">{config.label}</span>
       </div>
     )
@@ -65,10 +62,17 @@ export function LLMBiasDetectionPage() {
     return colors[level] || colors.moderate
   }
 
+  const biasLevelBadgeClasses: Record<string, string> = {
+    very_low: 'bg-green-100 text-green-700',
+    low: 'bg-lime-100 text-lime-700',
+    moderate: 'bg-yellow-100 text-yellow-700',
+    high: 'bg-orange-100 text-orange-700',
+    critical: 'bg-red-100 text-red-700',
+  }
+  const historyItems = history?.items ?? []
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -101,8 +105,7 @@ export function LLMBiasDetectionPage() {
                   disabled={analyzeMutation.isPending || textInput.length < 10}
                   className="flex items-center gap-2 rounded-lg bg-caramel px-6 py-2 font-semibold text-white transition hover:bg-caramel-dark disabled:opacity-50"
                 >
-                  {analyzeMutation.isPending && <Loader2 size={16} className="animate-spin" />}
-                  Analyze
+                  {analyzeMutation.isPending ? 'Analyzing...' : 'Analyze'}
                 </button>
               </div>
             </div>
@@ -169,7 +172,7 @@ export function LLMBiasDetectionPage() {
                   <div className="space-y-2">
                     {analyzeMutation.data.risks.map((risk, idx) => (
                       <div key={idx} className="flex gap-2 text-sm text-muted">
-                        <AlertCircle size={16} className="flex-shrink-0 text-orange-500" />
+                        <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-orange-500" />
                         <span>{risk}</span>
                       </div>
                     ))}
@@ -183,7 +186,7 @@ export function LLMBiasDetectionPage() {
                 <div className="space-y-2">
                   {analyzeMutation.data.recommendations.map((rec, idx) => (
                     <div key={idx} className="flex gap-2 text-sm text-muted">
-                      <CheckCircle size={16} className="flex-shrink-0 text-green-500" />
+                      <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-green-500" />
                       <span>{rec}</span>
                     </div>
                   ))}
@@ -206,8 +209,8 @@ export function LLMBiasDetectionPage() {
           <div className="rounded-lg border border-caramel20 bg-white p-6 shadow-sm">
             <h3 className="mb-4 font-semibold text-espresso">Recent Analyses</h3>
             <div className="space-y-3 max-h-96 overflow-y-auto">
-              {(history?.items || []).length > 0 ? (
-                history.items.map((item) => (
+              {historyItems.length > 0 ? (
+                historyItems.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => copyToClipboard(item.text_input)}
@@ -222,13 +225,7 @@ export function LLMBiasDetectionPage() {
                       </div>
                       <div
                         className={`flex-shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${
-                          {
-                            very_low: 'bg-green-100 text-green-700',
-                            low: 'bg-lime-100 text-lime-700',
-                            moderate: 'bg-yellow-100 text-yellow-700',
-                            high: 'bg-orange-100 text-orange-700',
-                            critical: 'bg-red-100 text-red-700',
-                          }[item.bias_level as keyof typeof { very_low: '' }]
+                          biasLevelBadgeClasses[item.bias_level] || biasLevelBadgeClasses.moderate
                         }`}
                       >
                         {(item.overall_bias_score * 100).toFixed(0)}%
