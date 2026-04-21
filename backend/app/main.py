@@ -7,7 +7,10 @@ from sqlalchemy import text
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.error_handling import ErrorHandlingMiddleware, add_error_handlers, setup_logging
+from app.db import models  # noqa: F401
+from app.db.base import Base
 from app.db.session import SessionLocal
+from app.db.session import engine
 
 
 setup_logging()
@@ -32,6 +35,12 @@ app.add_middleware(
 
 add_error_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+def initialize_database() -> None:
+    """Create missing tables on startup so a fresh local volume can boot cleanly."""
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")

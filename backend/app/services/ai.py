@@ -1,8 +1,7 @@
 """Production-ready AI service using Groq.
 
 Provides intelligent explanations, recommendations, and bias remediation
-suggestions through a Groq-hosted open model, with deterministic fallbacks
-when the SDK or API key is unavailable.
+suggestions through a Groq-hosted open model.
 """
 
 import json
@@ -27,18 +26,16 @@ class GroqAIService:
 
         api_key = settings.groq_api_key.strip()
         if not api_key:
-            logger.warning("GROQ_API_KEY is not set. Using fallback explanations.")
-            return
+            raise AIServiceError("GROQ_API_KEY is required for audit generation")
 
         try:
             from groq import Groq
 
             self.client = Groq(api_key=api_key)
         except ImportError:
-            logger.warning("Groq SDK not installed. Using fallback explanations.")
+            raise AIServiceError("Groq SDK is not installed") from None
         except Exception as exc:
-            logger.warning(f"Failed to initialize Groq client: {exc}")
-            self.client = None
+            raise AIServiceError(f"Failed to initialize Groq client: {exc}") from exc
 
     def explain_metric(
         self,
@@ -48,9 +45,6 @@ class GroqAIService:
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Provide a human-readable explanation of a fairness metric."""
-        if not self.client:
-            return self._fallback_explain_metric(metric_name, metric_value, threshold)
-
         try:
             prompt = self._build_metric_prompt(metric_name, metric_value, threshold, context)
             response = self.client.chat.completions.create(
@@ -65,10 +59,13 @@ class GroqAIService:
                 temperature=0.2,
                 max_tokens=220,
             )
-            return self._extract_text(response) or self._fallback_explain_metric(metric_name, metric_value, threshold)
+            text = self._extract_text(response)
+            if not text:
+                raise AIServiceError("Groq returned an empty metric explanation")
+            return text
         except Exception as exc:
-            logger.error(f"AI explanation failed, using fallback: {exc}")
-            return self._fallback_explain_metric(metric_name, metric_value, threshold)
+            logger.error(f"AI explanation failed: {exc}")
+            raise AIServiceError(f"AI explanation failed: {exc}") from exc
 
     def suggest_fix(
         self,
@@ -79,9 +76,6 @@ class GroqAIService:
         accuracy_priority: str = "balanced",
     ) -> Dict[str, Any]:
         """Get specific remediation suggestions for a fairness violation."""
-        if not self.client:
-            return self._fallback_suggest_fix(metric_name, accuracy_priority)
-
         try:
             prompt = (
                 "You are a machine learning fairness expert. Return only JSON. "
@@ -110,12 +104,12 @@ class GroqAIService:
             parsed = self._parse_json_response(response_text)
             if isinstance(parsed, dict) and parsed.get("techniques"):
                 return parsed
-            return self._fallback_suggest_fix(metric_name, accuracy_priority)
+            raise AIServiceError("Groq returned an invalid remediation payload")
         except json.JSONDecodeError:
-            return self._fallback_suggest_fix(metric_name, accuracy_priority)
+            raise AIServiceError("Groq returned invalid JSON for remediation suggestions")
         except Exception as exc:
             logger.error(f"AI suggestion failed: {exc}")
-            return self._fallback_suggest_fix(metric_name, accuracy_priority)
+            raise AIServiceError(f"AI suggestion failed: {exc}") from exc
 
     def summarize_audit(
         self,
@@ -125,9 +119,6 @@ class GroqAIService:
         compliance_framework: str = "EEOC",
     ) -> str:
         """Generate an executive summary of audit results."""
-        if not self.client:
-            return self._fallback_summarize_audit(score, flagged_metrics)
-
         try:
             flagged_list = ", ".join(flagged_metrics) if flagged_metrics else "none"
             dataset_summary = json.dumps(dataset_info or {}, default=str)
@@ -152,10 +143,13 @@ class GroqAIService:
                 temperature=0.2,
                 max_tokens=220,
             )
-            return self._extract_text(response) or self._fallback_summarize_audit(score, flagged_metrics)
+            text = self._extract_text(response)
+            if not text:
+                raise AIServiceError("Groq returned an empty audit summary")
+            return text
         except Exception as exc:
             logger.error(f"AI summary failed: {exc}")
-            return self._fallback_summarize_audit(score, flagged_metrics)
+            raise AIServiceError(f"AI summary failed: {exc}") from exc
 
     async def stream_remediation_suggestions(
         self,
@@ -225,31 +219,6 @@ class GroqAIService:
             return value < threshold
         return value > threshold
 
-    def _fallback_explain_metric(self, metric_name: str, value: float, threshold: float) -> str:
-        metric_display = metric_name.replace("_", " ").title()
-        passed = not self._is_violation(metric_name, value, threshold)
-        if passed:
-            return f"{metric_display} ({value:.4f}) passes the threshold ({threshold:.4f})."
-        return f"{metric_display} ({value:.4f}) violates the threshold ({threshold:.4f}). Potential bias detected."
-
-    def _fallback_suggest_fix(self, metric_name: str, accuracy_priority: str) -> Dict[str, Any]:
-        techniques = [
-            {"name": "Threshold Optimization", "description": "Adjust the decision threshold to improve parity.", "complexity": "low", "fairness_gain": "medium"},
-            {"name": "Reweighting", "description": "Rebalance training examples across groups.", "complexity": "medium", "fairness_gain": "high"},
-            {"name": "Resampling", "description": "Oversample underrepresented groups or undersample dominant groups.", "complexity": "low", "fairness_gain": "medium"},
-        ]
-        if accuracy_priority == "high":
-            techniques.insert(0, {"name": "Post-processing Calibration", "description": "Calibrate outputs for group parity while preserving ranking.", "complexity": "medium", "fairness_gain": "medium"})
-        return {"metric": metric_name, "priority": accuracy_priority, "techniques": techniques}
-
-    def _fallback_summarize_audit(self, score: float, flagged_metrics: List[str]) -> str:
-        if score >= 80:
-            return f"Score: {score}/100. The model demonstrates strong fairness, with routine monitoring recommended."
-        if score >= 60:
-            return f"Score: {score}/100. {len(flagged_metrics)} fairness issues were found and remediation is recommended."
-        return f"Score: {score}/100. Significant fairness violations were detected and urgent remediation is required."
-
-
 _ai_service = GroqAIService()
 
 
@@ -260,8 +229,15 @@ def explain_metric(metric_name: str, metric_value: float, threshold: float, cont
 
 def suggest_fix(context: dict) -> str:
     """Get remediation suggestions (backward compat)."""
-    result = _ai_service._fallback_suggest_fix(context.get("metric_name", "unknown"), context.get("accuracy_priority", "balanced"))
-    return json.dumps(result)
+    return json.dumps(
+        _ai_service.suggest_fix(
+            context.get("metric_name", "unknown"),
+            float(context.get("metric_value", 0.0)),
+            context.get("violation_severity", "medium"),
+            context.get("model_type", "classification"),
+            context.get("accuracy_priority", "balanced"),
+        )
+    )
 
 
 def summarize_audit(score: float, flagged_metrics: list[str]) -> str:

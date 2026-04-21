@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "llama-3.1-70b-versatile"
     google_client_id: str = ""
+    google_client_secret: str = ""
     google_client_ids: list[str] = Field(default_factory=list)
     cors_origins: list[str] = Field(
         default_factory=lambda: [

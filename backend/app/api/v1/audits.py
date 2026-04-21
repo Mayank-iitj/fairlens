@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.schemas.audit import AuditCreate, AuditOut
 from app.services.ai import summarize_audit
 from app.services.reporting import generate_report_pdf
-from app.tasks.audit_tasks import run_audit_job
+from app.tasks.audit_tasks import execute_audit_job
 
 
 router = APIRouter()
@@ -27,10 +27,6 @@ def create_audit(payload: AuditCreate, user: User = Depends(get_current_user), d
     config_json = payload.config_json or {}
     if "target" not in config_json:
         config_json["target"] = "approved"
-    if "y_pred_col" not in config_json:
-        config_json["y_pred_col"] = "prediction"
-    if "sensitive_attributes" not in config_json:
-        config_json["sensitive_attributes"] = ["gender", "race"]
 
     audit = Audit(dataset_id=dataset.id, model_path=payload.model_path, config_json=config_json)
     db.add(audit)
@@ -38,11 +34,10 @@ def create_audit(payload: AuditCreate, user: User = Depends(get_current_user), d
     db.refresh(audit)
 
     try:
-        task = run_audit_job.delay(audit.id)
-        return {"audit_id": audit.id, "job_id": task.id, "status": "queued"}
+        result = execute_audit_job(audit.id)
+        db.refresh(audit)
+        return {"audit_id": audit.id, "job_id": None, "status": result.get("status", audit.status), "score": audit.score}
     except Exception:
-        # Local-dev fallback: execute immediately when broker/worker are unavailable.
-        run_audit_job.apply(args=[audit.id]).get()
         db.refresh(audit)
         return {"audit_id": audit.id, "job_id": None, "status": audit.status}
 

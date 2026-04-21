@@ -132,10 +132,11 @@ class ComplianceReportGenerator:
         metrics: Dict[str, Any],
         violations: List[Dict[str, Any]],
         compliance_framework: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        llm_bias_analyses: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
-        Generate comprehensive JSON compliance report.
+        Generate comprehensive JSON compliance report with optional LLM bias data.
         
         Args:
             audit_id: Unique audit identifier
@@ -144,6 +145,7 @@ class ComplianceReportGenerator:
             violations: List of violation findings
             compliance_framework: Which framework (EEOC, GDPR, etc.)
             metadata: Additional metadata
+            llm_bias_analyses: Optional list of LLM bias analysis results
             
         Returns:
             Complete JSON report as dict
@@ -154,12 +156,14 @@ class ComplianceReportGenerator:
                     "generated_at": datetime.utcnow().isoformat(),
                     "report_version": "1.0",
                     "audit_id": audit_id,
-                    "compliance_framework": compliance_framework
+                    "compliance_framework": compliance_framework,
+                    "includes_llm_bias_analysis": llm_bias_analyses is not None and len(llm_bias_analyses) > 0
                 },
                 "executive_summary": {
                     "total_metrics": len(metrics),
                     "violations_found": len(violations),
                     "compliance_status": "PASS" if len(violations) == 0 else "FAIL",
+                    "llm_analyses_count": len(llm_bias_analyses) if llm_bias_analyses else 0,
                     "recommendations_count": len(violations)
                 },
                 "dataset_analysis": {
@@ -196,6 +200,43 @@ class ComplianceReportGenerator:
                 }
             }
             
+            # Add LLM bias analysis if provided
+            if llm_bias_analyses:
+                total_llm = len(llm_bias_analyses)
+                avg_bias = sum(a.get('overall_bias_score', 0) for a in llm_bias_analyses) / total_llm if total_llm > 0 else 0
+                
+                report["llm_bias_analysis"] = {
+                    "total_analyses": total_llm,
+                    "average_bias_score": avg_bias,
+                    "high_risk_count": sum(1 for a in llm_bias_analyses if a.get('bias_level') in ['high', 'critical']),
+                    "critical_count": sum(1 for a in llm_bias_analyses if a.get('bias_level') == 'critical'),
+                    "bias_categories_detected": list(set(
+                        b.get('category')
+                        for a in llm_bias_analyses
+                        for b in a.get('detected_biases', [])
+                    )),
+                    "analyses": [
+                        {
+                            "id": a.get('id'),
+                            "overall_bias_score": a.get('overall_bias_score'),
+                            "bias_level": a.get('bias_level'),
+                            "summary": a.get('summary'),
+                            "risks": a.get('risks', []),
+                            "recommendations": a.get('recommendations', []),
+                            "detected_biases": [
+                                {
+                                    "category": b.get('category'),
+                                    "score": b.get('score'),
+                                    "severity": b.get('severity'),
+                                    "description": b.get('description')
+                                }
+                                for b in a.get('detected_biases', [])
+                            ]
+                        }
+                        for a in llm_bias_analyses[:10]  # Include first 10
+                    ]
+                }
+            
             logger.info(f"JSON report generated for audit {audit_id}")
             return report
             
@@ -211,10 +252,11 @@ class ComplianceReportGenerator:
         metrics: Dict[str, Any],
         violations: List[Dict[str, Any]],
         compliance_framework: str,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        llm_bias_analyses: Optional[List[Dict[str, Any]]] = None
     ) -> Path:
         """
-        Generate production-quality PDF compliance report.
+        Generate production-quality PDF compliance report with LLM bias detection.
         
         Args:
             destination: Output file path
@@ -224,6 +266,7 @@ class ComplianceReportGenerator:
             violations: List of violation findings
             compliance_framework: Which framework (EEOC, GDPR, etc.)
             metadata: Additional metadata
+            llm_bias_analyses: Optional list of LLM bias analysis results
             
         Returns:
             Path to generated PDF
@@ -246,7 +289,7 @@ class ComplianceReportGenerator:
             story.append(PageBreak())
             
             # Executive Summary
-            story.extend(self._build_executive_summary(metrics, violations))
+            story.extend(self._build_executive_summary(metrics, violations, llm_bias_analyses))
             story.append(PageBreak())
             
             # Dataset Analysis
@@ -262,6 +305,11 @@ class ComplianceReportGenerator:
                 story.extend(self._build_violations_section(violations))
                 story.append(PageBreak())
             
+            # LLM Bias Detection Section (NEW)
+            if llm_bias_analyses:
+                story.extend(self._build_llm_bias_section(llm_bias_analyses))
+                story.append(PageBreak())
+            
             # Compliance Checklist
             story.extend(self._build_compliance_section(
                 compliance_framework, metrics, violations
@@ -270,6 +318,12 @@ class ComplianceReportGenerator:
             
             # Remediation Plan
             story.extend(self._build_remediation_section(violations))
+            story.append(PageBreak())
+            
+            # Comprehensive Recommendations
+            story.extend(self._build_comprehensive_recommendations(
+                violations, llm_bias_analyses
+            ))
             
             # Build PDF
             doc.build(story)
@@ -320,8 +374,13 @@ class ComplianceReportGenerator:
         
         return story
     
-    def _build_executive_summary(self, metrics: Dict, violations: List) -> List:
-        """Build executive summary section."""
+    def _build_executive_summary(
+        self,
+        metrics: Dict,
+        violations: List,
+        llm_bias_analyses: Optional[List[Dict]] = None
+    ) -> List:
+        """Build executive summary section with LLM bias data."""
         story = []
         
         story.append(Paragraph("Executive Summary", self.styles['CustomHeading']))
@@ -330,12 +389,23 @@ class ComplianceReportGenerator:
         compliance_status = "COMPLIANT ✓" if len(violations) == 0 else "NON-COMPLIANT ✗"
         status_color = colors.green if len(violations) == 0 else colors.red
         
+        # Calculate LLM bias status
+        llm_bias_status = "SAFE ✓"
+        if llm_bias_analyses:
+            high_risk = sum(1 for a in llm_bias_analyses if a.get('bias_level') in ['high', 'critical'])
+            if high_risk > 0:
+                llm_bias_status = f"CONCERNS ({high_risk} high-risk) ⚠"
+        
         summary_data = [
-            ["Compliance Status:", compliance_status],
+            ["Data Fairness Status:", compliance_status],
             ["Metrics Analyzed:", str(len(metrics))],
-            ["Violations Found:", str(len(violations))],
-            ["Fairness Score:", f"{metrics.get('fairness_score', 0)}%"]
+            ["Data Violations Found:", str(len(violations))],
+            ["LLM Bias Status:", llm_bias_status],
         ]
+        
+        if llm_bias_analyses:
+            avg_llm_bias = sum(a.get('overall_bias_score', 0) for a in llm_bias_analyses) / len(llm_bias_analyses)
+            summary_data.append(["Average LLM Bias Score:", f"{avg_llm_bias:.1%}"])
         
         summary_table = Table(summary_data, colWidths=[2.5*inch, 3.5*inch])
         summary_table.setStyle(TableStyle([
@@ -351,11 +421,15 @@ class ComplianceReportGenerator:
         story.append(summary_table)
         story.append(Spacer(1, 0.3*inch))
         
-        story.append(Paragraph(
+        # Summary text
+        summary_msg = (
             f"This audit evaluated the fairness and compliance of the analyzed model/system. "
-            f"Found <b>{len(violations)}</b> bias-related violations requiring remediation.",
-            self.styles['BodyText']
-        ))
+            f"Found <b>{len(violations)}</b> data bias violations and analyzed "
+            f"<b>{len(llm_bias_analyses) if llm_bias_analyses else 0}</b> LLM outputs for bias. "
+            f"See detailed sections for specific findings and recommendations."
+        )
+        
+        story.append(Paragraph(summary_msg, self.styles['BodyText']))
         
         return story
     
@@ -606,6 +680,277 @@ class ComplianceReportGenerator:
             "retrain model with fairness objectives, "
             "and document all bias mitigation efforts"
         )
+    
+    def _build_llm_bias_section(self, llm_analyses: List[Dict[str, Any]]) -> List:
+        """Build LLM bias detection section (NEW)."""
+        story = []
+        
+        story.append(Paragraph("LLM Output Bias Analysis", self.styles['CustomHeading']))
+        story.append(Spacer(1, 0.2*inch))
+        
+        if not llm_analyses:
+            story.append(Paragraph(
+                "No LLM bias analyses performed.",
+                self.styles['Normal']
+            ))
+            return story
+        
+        # Summary statistics
+        total_analyses = len(llm_analyses)
+        avg_bias_score = sum(a.get('overall_bias_score', 0) for a in llm_analyses) / total_analyses
+        high_risk_count = sum(1 for a in llm_analyses if a.get('bias_level') in ['high', 'critical'])
+        
+        summary_rows = [
+            ["Total Analyses", str(total_analyses)],
+            ["Average Bias Score", f"{avg_bias_score:.2%}"],
+            ["High-Risk Detections", str(high_risk_count)],
+            ["Critical Findings", str(sum(1 for a in llm_analyses if a.get('bias_level') == 'critical'))]
+        ]
+        
+        summary_table = Table(summary_rows, colWidths=[2.5*inch, 3.5*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ]))
+        
+        story.append(summary_table)
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Bias type breakdown
+        story.append(Paragraph("Detected Bias Types", self.styles['Heading3']))
+        story.append(Spacer(1, 0.1*inch))
+        
+        bias_breakdown = {}
+        for analysis in llm_analyses:
+            for bias in analysis.get('detected_biases', []):
+                category = bias.get('category', 'unknown')
+                bias_breakdown[category] = bias_breakdown.get(category, 0) + 1
+        
+        if bias_breakdown:
+            bias_rows = [["Bias Type", "Occurrences"]]
+            bias_rows.extend([[k, str(v)] for k, v in bias_breakdown.items()])
+            
+            bias_table = Table(bias_rows, colWidths=[2.5*inch, 3.5*inch])
+            bias_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d9534f')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.beige, colors.white]),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+            ]))
+            
+            story.append(bias_table)
+            story.append(Spacer(1, 0.3*inch))
+        
+        # Detailed findings
+        story.append(Paragraph("Detailed Findings", self.styles['Heading3']))
+        story.append(Spacer(1, 0.1*inch))
+        
+        for idx, analysis in enumerate(llm_analyses[:5], 1):  # Show first 5
+            bias_level = analysis.get('bias_level', 'unknown').upper()
+            bias_color = {
+                'CRITICAL': colors.red,
+                'HIGH': colors.orange,
+                'MODERATE': colors.yellow,
+                'LOW': colors.green,
+                'VERY_LOW': colors.lightgreen
+            }.get(bias_level, colors.grey)
+            
+            finding_text = (
+                f"<b>Analysis {idx}:</b> {bias_level}<br/>"
+                f"Score: {analysis.get('overall_bias_score', 0):.1%}<br/>"
+                f"Summary: {analysis.get('summary', 'N/A')}"
+            )
+            
+            story.append(Paragraph(finding_text, self.styles['Normal']))
+            
+            # Key recommendations
+            recommendations = analysis.get('recommendations', [])
+            if recommendations:
+                story.append(Paragraph(
+                    f"<b>Recommendations:</b> {'; '.join(recommendations[:2])}",
+                    self.styles['Normal']
+                ))
+            
+            story.append(Spacer(1, 0.15*inch))
+        
+        if len(llm_analyses) > 5:
+            story.append(Paragraph(
+                f"... and {len(llm_analyses) - 5} more analyses",
+                self.styles['Normal']
+            ))
+        
+        return story
+    
+    def _build_comprehensive_recommendations(
+        self,
+        violations: List[Dict],
+        llm_bias_analyses: Optional[List[Dict]] = None
+    ) -> List:
+        """Build comprehensive recommendations section combining all findings."""
+        story = []
+        
+        story.append(Paragraph("Comprehensive Recommendations", self.styles['CustomHeading']))
+        story.append(Spacer(1, 0.2*inch))
+        
+        # Collect all recommendations
+        data_bias_recs = []
+        for violation in violations:
+            if violation.get('recommendation'):
+                data_bias_recs.append(violation['recommendation'])
+        
+        llm_bias_recs = []
+        if llm_bias_analyses:
+            for analysis in llm_bias_analyses:
+                llm_bias_recs.extend(analysis.get('recommendations', [])[:2])
+        
+        # Priority categories
+        priority_items = {
+            "CRITICAL ACTIONS (Immediate)": [],
+            "HIGH PRIORITY (1-2 weeks)": [],
+            "MEDIUM PRIORITY (1-4 weeks)": [],
+            "ONGOING MONITORING": []
+        }
+        
+        # Categorize data bias recommendations
+        critical_keywords = ['critical', 'severe', 'immediate']
+        for rec in data_bias_recs:
+            if any(kw in rec.lower() for kw in critical_keywords):
+                priority_items["CRITICAL ACTIONS (Immediate)"].append(rec)
+            else:
+                priority_items["HIGH PRIORITY (1-2 weeks)"].append(rec)
+        
+        # Categorize LLM bias recommendations
+        if llm_bias_recs:
+            priority_items["MEDIUM PRIORITY (1-4 weeks)"].extend(llm_bias_recs)
+        
+        priority_items["ONGOING MONITORING"].extend([
+            "Establish continuous fairness monitoring dashboard",
+            "Schedule monthly bias audit reviews",
+            "Maintain bias detection audit trail",
+            "Track remediation implementation progress",
+            "Engage stakeholders in feedback loops"
+        ])
+        
+        # Build recommendation table
+        for priority, recommendations in priority_items.items():
+            if not recommendations:
+                continue
+            
+            story.append(Paragraph(priority, self.styles['Heading3']))
+            story.append(Spacer(1, 0.1*inch))
+            
+            for i, rec in enumerate(recommendations[:3], 1):  # Show top 3 per category
+                rec_text = rec[:100] + "..." if len(rec) > 100 else rec
+                story.append(Paragraph(f"{i}. {rec_text}", self.styles['Normal']))
+            
+            if len(recommendations) > 3:
+                story.append(Paragraph(
+                    f"... and {len(recommendations) - 3} more items",
+                    self.styles['Normal']
+                ))
+            
+            story.append(Spacer(1, 0.2*inch))
+        
+        # Implementation timeline
+        story.append(Paragraph("Implementation Timeline", self.styles['Heading3']))
+        story.append(Spacer(1, 0.1*inch))
+        
+        timeline = [
+            "<b>Week 1:</b> Executive review and resource allocation",
+            "<b>Weeks 2-3:</b> Critical bias fixes and control implementations",
+            "<b>Weeks 4-8:</b> Model retraining and fairness constraint deployment",
+            "<b>Weeks 8+:</b> Continuous monitoring and performance validation",
+            "<b>Ongoing:</b> Quarterly audit and stakeholder engagement"
+        ]
+        
+        for item in timeline:
+            story.append(Paragraph(item, self.styles['Normal']))
+            story.append(Spacer(1, 0.08*inch))
+        
+        return story
+    
+    def generate_json_report_with_llm(
+        self,
+        audit_id: str,
+        dataset_info: Dict[str, Any],
+        metrics: Dict[str, Any],
+        violations: List[Dict[str, Any]],
+        compliance_framework: str,
+        llm_bias_analyses: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate comprehensive JSON report with LLM bias detection results.
+        
+        Args:
+            audit_id: Unique audit identifier
+            dataset_info: Information about the dataset
+            metrics: Computed fairness metrics
+            violations: List of violation findings
+            compliance_framework: Which framework (EEOC, GDPR, etc.)
+            llm_bias_analyses: Optional list of LLM bias analysis results
+            metadata: Additional metadata
+            
+        Returns:
+            Complete JSON report as dict
+        """
+        # Get base report
+        report = self.generate_json_report(
+            audit_id, dataset_info, metrics, violations,
+            compliance_framework, metadata
+        )
+        
+        # Add LLM bias section
+        if llm_bias_analyses:
+            total_analyses = len(llm_bias_analyses)
+            avg_bias_score = sum(a.get('overall_bias_score', 0) for a in llm_bias_analyses) / total_analyses if total_analyses > 0 else 0
+            
+            llm_bias_summary = {
+                "total_analyses": total_analyses,
+                "average_bias_score": avg_bias_score,
+                "high_risk_count": sum(1 for a in llm_bias_analyses if a.get('bias_level') in ['high', 'critical']),
+                "critical_count": sum(1 for a in llm_bias_analyses if a.get('bias_level') == 'critical'),
+                "analysis_details": [
+                    {
+                        "id": a.get('id'),
+                        "bias_score": a.get('overall_bias_score'),
+                        "bias_level": a.get('bias_level'),
+                        "detected_biases": [
+                            {
+                                "category": b.get('category'),
+                                "score": b.get('score'),
+                                "severity": b.get('severity')
+                            }
+                            for b in a.get('detected_biases', [])
+                        ],
+                        "summary": a.get('summary'),
+                        "recommendations": a.get('recommendations', [])
+                    }
+                    for a in llm_bias_analyses
+                ]
+            }
+            
+            report["llm_bias_detection"] = llm_bias_summary
+        
+        # Add combined risk assessment
+        data_bias_risk = len(violations) > 0
+        llm_bias_risk = any(a.get('bias_level') in ['high', 'critical'] for a in (llm_bias_analyses or []))
+        
+        report["combined_risk_assessment"] = {
+            "data_bias_risk": "HIGH" if data_bias_risk else "LOW",
+            "llm_output_bias_risk": "HIGH" if llm_bias_risk else "LOW",
+            "overall_risk": "HIGH" if (data_bias_risk or llm_bias_risk) else "LOW",
+            "requires_immediate_action": data_bias_risk or llm_bias_risk
+        }
+        
+        return report
 
 
 def generate_report_pdf(destination: Path, title: str, summary: str) -> Path:

@@ -4,6 +4,7 @@ const links = [
   ['/', 'Home'],
   ['/dashboard', 'Dashboard'],
   ['/audit/new', 'New Audit'],
+  ['/llm-bias', 'LLM Bias'],
   ['/reports', 'Reports'],
   ['/monitor', 'Monitor'],
   ['/settings', 'Settings'],

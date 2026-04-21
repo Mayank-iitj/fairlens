@@ -58,3 +58,42 @@ export type RemediationPreview = {
   recommendation_summary: string
   metrics: AuditMetric[]
 }
+
+// LLM Bias Detection Types
+export type BiasDetectionResult = {
+  algorithm: string
+  category: string
+  score: number
+  severity: string
+  description: string
+  evidence: string[]
+  recommendations: string[]
+}
+
+export type LLMBiasAnalysisResponse = {
+  id: string
+  overall_bias_score: number
+  bias_level: string
+  summary: string
+  risks: string[]
+  recommendations: string[]
+  detected_biases: BiasDetectionResult[]
+  created_at: string
+  status: string
+}
+
+export type LLMBiasAnalysisHistoryItem = {
+  id: string
+  text_input: string
+  overall_bias_score: number
+  bias_level: string
+  summary: string
+  created_at: string
+}
+
+export type LLMBiasAnalysisHistory = {
+  items: LLMBiasAnalysisHistoryItem[]
+  total: number
+  page: number
+  page_size: number
+}

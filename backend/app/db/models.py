@@ -120,3 +120,57 @@ class Alert(Base):
     metric: Mapped[str] = mapped_column(String(128))
     value: Mapped[float] = mapped_column(Float)
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class LLMBiasAnalysis(Base):
+    """Stores LLM output bias analysis results."""
+    __tablename__ = "llm_bias_analyses"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    text_input: Mapped[str] = mapped_column(Text, nullable=False)
+    overall_bias_score: Mapped[float] = mapped_column(Float, nullable=False)
+    bias_level: Mapped[str] = mapped_column(String(32), nullable=False)  # very_low, low, moderate, high, critical
+    analysis_results: Mapped[dict] = mapped_column(JSON, nullable=False)  # Full analysis JSON
+    detected_biases: Mapped[dict] = mapped_column(JSON, default=dict)  # List of detected biases
+    summary: Mapped[str] = mapped_column(Text, nullable=True)
+    risks: Mapped[list] = mapped_column(JSON, default=list)
+    recommendations: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(32), default="completed")  # completed, failed, pending
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user: Mapped[User] = relationship(back_populates="llm_bias_analyses")
+
+
+class LLMBiasDetectionMetric(Base):
+    """Stores individual bias detection metrics for trending and analysis."""
+    __tablename__ = "llm_bias_detection_metrics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    analysis_id: Mapped[str] = mapped_column(ForeignKey("llm_bias_analyses.id"), index=True)
+    algorithm: Mapped[str] = mapped_column(String(128), nullable=False)  # e.g., gender_bias_detector
+    category: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g., gender, toxicity
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    severity: Mapped[str] = mapped_column(String(32), nullable=False)  # low, medium, high, critical
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    evidence: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    analysis: Mapped[LLMBiasAnalysis] = relationship(back_populates="metrics")
+
+
+# Add relationship to User model for llm_bias_analyses
+User.llm_bias_analyses = relationship(
+    "LLMBiasAnalysis",
+    back_populates="user",
+    cascade="all, delete-orphan"
+)
+
+# Add relationship to LLMBiasAnalysis model for metrics
+LLMBiasAnalysis.metrics = relationship(
+    "LLMBiasDetectionMetric",
+    back_populates="analysis",
+    cascade="all, delete-orphan"
+)

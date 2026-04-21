@@ -39,7 +39,6 @@ export function AuditWizardPage() {
       formData.append('name', datasetName.trim() || datasetFile.name)
 
       const { data } = await api.post<{ dataset_id: string }>('/datasets/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
       })
       return data
     },
@@ -132,6 +131,11 @@ export function AuditWizardPage() {
               >
                 {uploadMutation.isPending ? 'Uploading...' : 'Upload Dataset'}
               </button>
+            </div>
+
+            <div className="rounded-xl border border-caramel20 bg-caramel10 p-4">
+              <p className="mb-2 text-sm font-semibold text-espresso">Real-time audit workflow</p>
+              <p className="text-sm text-muted">Upload a real dataset, configure the target and prediction columns, then run the audit directly against production metrics and Groq-generated summaries.</p>
             </div>
           </div>
         )}

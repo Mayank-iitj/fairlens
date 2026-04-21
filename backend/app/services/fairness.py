@@ -496,13 +496,13 @@ class FairnessMetricsEngine:
             di_results = self.compute_disparate_impact(
                 data, y_pred_col, primary_attr, favorable_outcome
             )
-            di_value = di_results["disparate_impact_ratio"]
-            di_threshold = thresholds.get("disparate_impact", self.DI_THRESHOLD)
+            di_value = float(di_results["disparate_impact_ratio"])
+            di_threshold = float(thresholds.get("disparate_impact", self.DI_THRESHOLD))
             di_passed = di_value >= di_threshold
             metric_results.append(MetricResult(
                 metric_name="disparate_impact",
                 group_name="overall",
-                value=round(di_value, 4),
+                value=float(round(di_value, 4)),
                 threshold=di_threshold,
                 passed=di_passed
             ))
@@ -511,13 +511,13 @@ class FairnessMetricsEngine:
             dpd_results = self.compute_demographic_parity_difference(
                 data, y_pred_col, primary_attr, favorable_outcome
             )
-            dpd_value = dpd_results["demographic_parity_difference"]
-            dpd_threshold = thresholds.get("demographic_parity_diff", self.DPD_THRESHOLD)
+            dpd_value = float(dpd_results["demographic_parity_difference"])
+            dpd_threshold = float(thresholds.get("demographic_parity_diff", self.DPD_THRESHOLD))
             dpd_passed = dpd_value <= dpd_threshold
             metric_results.append(MetricResult(
                 metric_name="demographic_parity_diff",
                 group_name="overall",
-                value=round(dpd_value, 4),
+                value=float(round(dpd_value, 4)),
                 threshold=dpd_threshold,
                 passed=dpd_passed
             ))
@@ -526,13 +526,13 @@ class FairnessMetricsEngine:
             eod_results = self.compute_equalized_odds_difference(
                 data, y_true_col, y_pred_col, primary_attr, favorable_outcome
             )
-            eod_value = eod_results["equalized_odds_difference"]
-            eod_threshold = thresholds.get("equalized_odds_diff", self.EO_THRESHOLD)
+            eod_value = float(eod_results["equalized_odds_difference"])
+            eod_threshold = float(thresholds.get("equalized_odds_diff", self.EO_THRESHOLD))
             eod_passed = eod_value <= eod_threshold
             metric_results.append(MetricResult(
                 metric_name="equalized_odds_diff",
                 group_name="overall",
-                value=round(eod_value, 4),
+                value=float(round(eod_value, 4)),
                 threshold=eod_threshold,
                 passed=eod_passed
             ))
@@ -541,13 +541,13 @@ class FairnessMetricsEngine:
             ppd_results = self.compute_predictive_parity_difference(
                 data, y_true_col, y_pred_col, primary_attr, favorable_outcome
             )
-            ppd_value = ppd_results["predictive_parity_difference"]
-            ppd_threshold = thresholds.get("predictive_parity_diff", self.PP_THRESHOLD)
+            ppd_value = float(ppd_results["predictive_parity_difference"])
+            ppd_threshold = float(thresholds.get("predictive_parity_diff", self.PP_THRESHOLD))
             ppd_passed = ppd_value <= ppd_threshold
             metric_results.append(MetricResult(
                 metric_name="predictive_parity_diff",
                 group_name="overall",
-                value=round(ppd_value, 4),
+                value=float(round(ppd_value, 4)),
                 threshold=ppd_threshold,
                 passed=ppd_passed
             ))

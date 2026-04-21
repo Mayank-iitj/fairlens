@@ -22,7 +22,7 @@ export function HomePage() {
               FairLens helps data science and compliance teams upload datasets, compute fairness metrics, test remediations, and publish compliance-ready reports.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Link to="/login" className="rounded-full bg-caramel px-5 py-3 font-semibold text-white transition hover:bg-walnut">
+              <Link to="/audit/new" className="rounded-full bg-caramel px-5 py-3 font-semibold text-white transition hover:bg-walnut">
                 Start Audit
               </Link>
               <Link to="/audit/new" className="rounded-full border border-caramel20 bg-white px-5 py-3 font-semibold text-espresso transition hover:bg-caramel10">
