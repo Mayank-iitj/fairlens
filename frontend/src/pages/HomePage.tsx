@@ -1,11 +1,20 @@
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 
 import { BiasGauge } from '../components/BiasGauge'
 
 const useCases = ['Hiring', 'Lending', 'Healthcare', 'Content Moderation']
 
 export function HomePage() {
+  const [quickInput, setQuickInput] = useState('')
+  const navigate = useNavigate()
+
+  const handleQuickAnalyze = () => {
+    if (quickInput.trim().length < 10) return
+    navigate('/llm-bias', { state: { initialText: quickInput.trim() } })
+  }
+
   return (
     <div className="space-y-10">
       <section className="relative overflow-hidden rounded-3xl border border-caramel20 bg-white p-8 shadow-card">
@@ -54,6 +63,31 @@ export function HomePage() {
               {item}
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-caramel20 bg-white p-6 shadow-card">
+        <div className="space-y-3">
+          <h2 className="text-2xl font-display text-espresso">AI Output Bias Check</h2>
+          <p className="text-sm text-muted">
+            Paste an LLM response to detect gender bias, toxicity, stereotyping, sentiment skew, and representation risks.
+          </p>
+          <textarea
+            value={quickInput}
+            onChange={(e) => setQuickInput(e.target.value)}
+            placeholder="Paste an LLM response here (minimum 10 characters)..."
+            className="h-36 w-full rounded-lg border border-caramel20 bg-cream p-4 text-espresso placeholder-muted focus:border-caramel focus:outline-none"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted">{quickInput.length} characters</span>
+            <button
+              onClick={handleQuickAnalyze}
+              disabled={quickInput.trim().length < 10}
+              className="rounded-lg bg-caramel px-5 py-2 font-semibold text-white transition hover:bg-walnut disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Analyze Bias
+            </button>
+          </div>
         </div>
       </section>
     </div>

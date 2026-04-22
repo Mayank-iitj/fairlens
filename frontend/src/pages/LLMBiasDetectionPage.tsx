@@ -1,11 +1,17 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 
 import { api } from '../lib/api'
 import type { LLMBiasAnalysisResponse, LLMBiasAnalysisHistory } from '../types'
 
 export function LLMBiasDetectionPage() {
-  const [textInput, setTextInput] = useState('')
+  const location = useLocation()
+  const initialText =
+    typeof (location.state as { initialText?: unknown } | null)?.initialText === 'string'
+      ? ((location.state as { initialText?: string }).initialText ?? '')
+      : ''
+  const [textInput, setTextInput] = useState(initialText)
 
   // Fetch history
   const { data: history, refetch: refetchHistory } = useQuery<LLMBiasAnalysisHistory>({

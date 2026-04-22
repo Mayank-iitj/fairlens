@@ -6,7 +6,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -41,6 +41,19 @@ router = APIRouter()
 # Initialize the bias detection engine
 bias_engine = LLMBiasDetectionEngine()
 rate_limiter = get_rate_limiter()
+
+
+def _serialize_detection(detection: dict) -> BiasDetectionResultSchema:
+    """Serialize a detector payload safely for API responses."""
+    return BiasDetectionResultSchema(
+        algorithm=detection.get("algorithm"),
+        category=detection.get("category"),
+        score=detection.get("score"),
+        severity=detection.get("severity"),
+        description=detection.get("description"),
+        evidence=detection.get("evidence") or [],
+        recommendations=detection.get("recommendations") or [],
+    )
 
 
 @router.post("/analyze", response_model=LLMBiasAnalysisResponse)
@@ -87,6 +100,8 @@ def analyze_llm_output(
                 "score": detection.score,
                 "severity": detection.severity,
                 "description": detection.description,
+                "evidence": detection.evidence,
+                "recommendations": detection.recommendations,
             })
         
         # Store analysis in database
@@ -141,13 +156,7 @@ def analyze_llm_output(
             risks=db_analysis.risks,
             recommendations=db_analysis.recommendations,
             detected_biases=[
-                BiasDetectionResultSchema(
-                    algorithm=d.get("algorithm"),
-                    category=d.get("category"),
-                    score=d.get("score"),
-                    severity=d.get("severity"),
-                    description=d.get("description"),
-                )
+                _serialize_detection(d)
                 for d in detected_biases_list
             ],
             created_at=db_analysis.created_at,
@@ -269,9 +278,10 @@ def get_analysis_history(
     """
     # Get total count
     total = db.scalar(
-        select(LLMBiasAnalysis).where(LLMBiasAnalysis.user_id == user.id)
-    )
-    total = total if total else 0
+        select(func.count())
+        .select_from(LLMBiasAnalysis)
+        .where(LLMBiasAnalysis.user_id == user.id)
+    ) or 0
     
     # Get analyses with pagination
     offset = (page - 1) * page_size
@@ -299,7 +309,7 @@ def get_analysis_history(
     
     return LLMBiasAnalysisHistory(
         items=items,
-        total=len(analyses),
+        total=total,
         page=page,
         page_size=page_size,
     )
@@ -336,13 +346,7 @@ def get_analysis_result(
         raise HTTPException(status_code=404, detail="Analysis not found")
     
     detected_biases = [
-        BiasDetectionResultSchema(
-            algorithm=d.get("algorithm"),
-            category=d.get("category"),
-            score=d.get("score"),
-            severity=d.get("severity"),
-            description=d.get("description"),
-        )
+        _serialize_detection(d)
         for d in analysis.detected_biases
     ]
     
@@ -520,13 +524,7 @@ def list_analyses(
     results = []
     for analysis in analyses:
         detected_biases = [
-            BiasDetectionResultSchema(
-                algorithm=d.get("algorithm"),
-                category=d.get("category"),
-                score=d.get("score"),
-                severity=d.get("severity"),
-                description=d.get("description"),
-            )
+            _serialize_detection(d)
             for d in analysis.detected_biases
         ]
         

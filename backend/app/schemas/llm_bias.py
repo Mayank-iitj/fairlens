@@ -14,8 +14,8 @@ class BiasDetectionResultSchema(BaseModel):
     score: float = Field(..., ge=0, le=1)
     severity: str  # low, medium, high, critical
     description: str
-    evidence: List[str] = []
-    recommendations: List[str] = []
+    evidence: List[str] = Field(default_factory=list)
+    recommendations: List[str] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

@@ -24,7 +24,7 @@ class GroqAIService:
         self.client = None
         self.model = settings.groq_model
 
-        api_key = settings.groq_api_key.strip()
+        api_key = (settings.groq_api_key or "").strip()
         if not api_key:
             raise AIServiceError("GROQ_API_KEY is required for audit generation")
 
@@ -219,18 +219,25 @@ class GroqAIService:
             return value < threshold
         return value > threshold
 
-_ai_service = GroqAIService()
+_ai_service: Optional[GroqAIService] = None
+
+
+def _get_or_create_ai_service() -> GroqAIService:
+    global _ai_service
+    if _ai_service is None:
+        _ai_service = GroqAIService()
+    return _ai_service
 
 
 def explain_metric(metric_name: str, metric_value: float, threshold: float, context: Optional[Dict[str, Any]] = None) -> str:
     """Explain a fairness metric."""
-    return _ai_service.explain_metric(metric_name, metric_value, threshold, context)
+    return _get_or_create_ai_service().explain_metric(metric_name, metric_value, threshold, context)
 
 
 def suggest_fix(context: dict) -> str:
     """Get remediation suggestions (backward compat)."""
     return json.dumps(
-        _ai_service.suggest_fix(
+        _get_or_create_ai_service().suggest_fix(
             context.get("metric_name", "unknown"),
             float(context.get("metric_value", 0.0)),
             context.get("violation_severity", "medium"),
@@ -242,9 +249,9 @@ def suggest_fix(context: dict) -> str:
 
 def summarize_audit(score: float, flagged_metrics: list[str]) -> str:
     """Summarize audit results (backward compat)."""
-    return _ai_service.summarize_audit(score, flagged_metrics, {}, "EEOC")
+    return _get_or_create_ai_service().summarize_audit(score, flagged_metrics, {}, "EEOC")
 
 
 def get_ai_service() -> GroqAIService:
     """Get the AI service singleton."""
-    return _ai_service
+    return _get_or_create_ai_service()
